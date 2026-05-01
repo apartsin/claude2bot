@@ -261,12 +261,19 @@ def heartbeat_check_bot(token):
         if sys.platform == "win32":
             DETACHED = 0x00000008
             CREATE_NO_WINDOW = 0x08000000
+            # bun.exe is a CONSOLE-subsystem binary — DETACHED|CREATE_NO_WINDOW
+            # alone doesn't stop it from allocating a console. STARTUPINFO with
+            # SW_HIDE forces any window the child creates to be hidden.
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0  # SW_HIDE
             subprocess.Popen(
                 ["bun", "--cwd", plugin_root, "server.ts"],
                 creationflags=DETACHED | CREATE_NO_WINDOW,
                 close_fds=True,
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 env=env,
+                startupinfo=si,
             )
         else:
             subprocess.Popen(
@@ -275,7 +282,7 @@ def heartbeat_check_bot(token):
                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 env=env,
             )
-        log("heartbeat: respawned detached bot")
+        log("heartbeat: respawned detached bot (SW_HIDE)")
     except Exception as e:
         log(f"heartbeat: respawn failed: {e}")
 

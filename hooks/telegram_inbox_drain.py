@@ -36,12 +36,19 @@ def log(msg):
 
 
 def main():
-    # Read stdin to consume the hook payload (we don't need anything from it,
-    # but we must read so the parent doesn't hang on its end of the pipe).
+    # Read stdin to get the hook payload (we need hook_event_name to echo
+    # back correctly so the harness accepts our additionalContext).
+    payload = {}
     try:
-        sys.stdin.read()
+        raw = sys.stdin.read()
+        if raw:
+            payload = json.loads(raw)
     except Exception:
         pass
+
+    # Echo the actual event name the harness fired us with. Using the wrong
+    # event name causes the harness to silently drop additionalContext.
+    event_name = payload.get("hook_event_name", "SessionStart")
 
     if not INBOX_DIR.exists():
         # Nothing to drain. Emit empty JSON (harness treats missing
@@ -99,12 +106,12 @@ def main():
     digest = "\n".join(parts)
     out = {
         "hookSpecificOutput": {
-            "hookEventName": "SessionStart",
+            "hookEventName": event_name,
             "additionalContext": digest,
         }
     }
     print(json.dumps(out))
-    log(f"drained {len(consumed)}/{len(files)} files, digest {len(digest)} chars")
+    log(f"drained {len(consumed)}/{len(files)} files, digest {len(digest)} chars, event={event_name}")
 
 
 if __name__ == "__main__":
