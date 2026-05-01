@@ -972,9 +972,7 @@ async function handleInbound(
 
   // image_path goes in meta only — an in-content "[image attached — read: PATH]"
   // annotation is forgeable by any allowlisted sender typing that string.
-  mcp.notification({
-    method: 'notifications/claude/channel',
-    params: {
+  const notifParams = {
       content: text,
       meta: {
         chat_id,
@@ -991,7 +989,32 @@ async function handleInbound(
           ...(attachment.name ? { attachment_name: attachment.name } : {}),
         } : {}),
       },
-    },
+    }
+
+  // Fire MCP notification (primary, real-time) AND write to disk inbox
+  // (fallback). The inbox file lets a SessionStart hook recover any messages
+  // that arrived while no Claude session was alive to receive the MCP push,
+  // or whose notification was dropped. Each file is consumed once and then
+  // deleted by the SessionStart hook, so duplication is bounded to the rare
+  // race where MCP delivers AND a new session starts before the bot deletes
+  // its own file (we don't currently delete on success — the next session
+  // takes the file as authoritative).
+  try {
+    const inboxDir = join(homedir(), '.claude', 'hooks', 'telegram_inbox')
+    mkdirSync(inboxDir, { recursive: true })
+    const inboxName = `${Date.now()}-${msgId ?? 'nomsg'}-${chat_id}.json`
+    writeFileSync(
+      join(inboxDir, inboxName),
+      JSON.stringify({ method: 'notifications/claude/channel', params: notifParams }, null, 2),
+      { mode: 0o600 }
+    )
+  } catch (err) {
+    process.stderr.write(`telegram channel: inbox write failed: ${err}\n`)
+  }
+
+  mcp.notification({
+    method: 'notifications/claude/channel',
+    params: notifParams,
   }).catch(err => {
     process.stderr.write(`telegram channel: failed to deliver inbound to Claude: ${err}\n`)
   })
