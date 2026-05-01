@@ -187,9 +187,18 @@ def _label(payload: dict) -> str:
     return f"{project}/{slug}"
 
 
-def _extract_assistant_blocks(transcript_path: str, since_uuid: str = "") -> tuple[str, str]:
-    """Returns (concatenated_text, last_uuid). Walks transcript forward from
-    cursor (or start if cursor empty), gathering text blocks only."""
+def _extract_assistant_blocks(transcript_path: str, since_uuid: str = "",
+                              current_turn_only: bool = False) -> tuple[str, str]:
+    """Returns (concatenated_text, last_uuid).
+
+    If current_turn_only is True (Stop hook), walk backward from the end and
+    collect assistant text blocks until hitting a user/human entry — that
+    boundary marks the start of the current turn. This prevents Stop hooks
+    from re-emitting the entire transcript history every fire.
+
+    If False (PostToolUse stream), walk forward from cursor `since_uuid` to
+    pick up incremental new entries.
+    """
     if not transcript_path or not os.path.exists(transcript_path):
         return "", since_uuid
     try:
@@ -198,8 +207,45 @@ def _extract_assistant_blocks(transcript_path: str, since_uuid: str = "") -> tup
     except Exception:
         return "", since_uuid
 
+    if current_turn_only:
+        # Backward-walk: collect assistant entries until we hit a user entry.
+        collected: list[str] = []  # reverse-chrono
+        last_uuid = ""
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            t = obj.get("type")
+            if t == "user":
+                if collected:
+                    break
+                continue  # skip past tool-result wrappers etc.
+            if t != "assistant":
+                continue
+            if not last_uuid:
+                last_uuid = obj.get("uuid", "")
+            msg = obj.get("message", {})
+            content = msg.get("content", [])
+            if isinstance(content, list):
+                parts: list[str] = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text = block.get("text", "")
+                        if text.strip():
+                            parts.append(text)
+                if parts:
+                    collected.append("\n".join(parts))
+        if not collected:
+            return "", last_uuid
+        return "\n\n".join(reversed(collected)), last_uuid
+
+    # Forward-walk from cursor (PostToolUse stream behavior)
     found = (since_uuid == "")
-    parts: list[str] = []
+    parts_fwd: list[str] = []
     last_uuid = since_uuid
     for line in lines:
         line = line.strip()
@@ -223,15 +269,15 @@ def _extract_assistant_blocks(transcript_path: str, since_uuid: str = "") -> tup
                 if isinstance(block, dict) and block.get("type") == "text":
                     t = block.get("text", "")
                     if t.strip():
-                        parts.append(t)
+                        parts_fwd.append(t)
         last_uuid = u
-    return "\n\n".join(parts), last_uuid
+    return "\n\n".join(parts_fwd), last_uuid
 
 
 def handle_stop(payload: dict) -> None:
-    """End-of-turn full assistant text."""
+    """End-of-turn full assistant text — current turn only."""
     transcript = payload.get("transcript_path")
-    text, _ = _extract_assistant_blocks(transcript)  # all blocks, fresh
+    text, _ = _extract_assistant_blocks(transcript, current_turn_only=True)
     if not text:
         return
     label = _label(payload)
