@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "telegram": {
+      "command": "bun",
+      "args": ["--cwd", "${CLAUDE_PLUGIN_ROOT}", "server.ts"]
+    }
+  }
+}

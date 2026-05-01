@@ -1,0 +1,27 @@
+{
+  "_comment": "Drop these `hooks` blocks into your ~/.claude/settings.json. Adjust the python path if /c/Python314/python is not your interpreter.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/c/Python314/python /c/Users/<YOU>/.claude/hooks/telegram_mirror.py 2>>/c/Users/<YOU>/.claude/hooks/telegram_mirror.log || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/c/Python314/python /c/Users/<YOU>/.claude/hooks/telegram_mirror.py UserPromptSubmit 2>>/c/Users/<YOU>/.claude/hooks/telegram_mirror.log || true",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

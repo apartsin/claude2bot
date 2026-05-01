@@ -1,0 +1,16 @@
+{
+  "_comment": "Patched MCP launch config. Replace path/token, drop into ~/.claude/mcp.json under mcpServers.telegram. The key fix vs upstream: invoke server.ts directly (skips slow `bun install` step that races with Claude Code's MCP attach timeout).",
+  "mcpServers": {
+    "telegram": {
+      "command": "bun",
+      "args": [
+        "--cwd",
+        "C:\\Users\\<YOU>\\.claude\\plugins\\cache\\claude-plugins-official\\telegram\\<HASH>",
+        "server.ts"
+      ],
+      "env": {
+        "TELEGRAM_BOT_TOKEN": "<YOUR_BOT_TOKEN_HERE>"
+      }
+    }
+  }
+}

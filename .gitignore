@@ -1,0 +1,16 @@
+# Secrets
+.env
+*.token
+**/access.json
+
+# Logs / state
+*.log
+*.pid
+telegram_queue/
+node_modules/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
