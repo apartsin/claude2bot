@@ -28,7 +28,10 @@ PID_FILE = HOOKS_DIR / "telegram_worker.pid"
 WORKER_SCRIPT = HOOKS_DIR / "telegram_worker.py"
 LOG_FILE = HOOKS_DIR / "telegram_mirror.log"
 PYTHON = "/c/Python314/python"      # adjust if Python moves
-WIN_PYTHON = r"C:\Python314\python.exe"  # absolute Windows path for Popen
+# Use pythonw.exe (GUI subsystem) for background processes — python.exe is
+# CONSOLE subsystem and flashes a console window on Windows even with
+# CREATE_NO_WINDOW because the PE header dictates the subsystem at link time.
+WIN_PYTHON = r"C:\Python314\pythonw.exe"  # absolute Windows path for Popen
 PER_MESSAGE_LIMIT = 3500            # leave headroom under Telegram's 4096
 
 
@@ -173,6 +176,45 @@ def is_pid_alive(pid):
         return True
     except OSError:
         return False
+
+
+def _spawn_detached(cmd, env=None):
+    """Spawn cmd as a detached background process, OS-appropriate."""
+    if sys.platform == "win32":
+        DETACHED = 0x00000008
+        CREATE_NO_WINDOW = 0x08000000
+        subprocess.Popen(
+            cmd, creationflags=DETACHED | CREATE_NO_WINDOW, close_fds=True,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=env,
+        )
+    else:
+        subprocess.Popen(
+            cmd, start_new_session=True, close_fds=True,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=env,
+        )
+
+
+def ensure_modal_watcher_running():
+    """Spawn the modal watcher daemon if not alive. Same singleton pattern."""
+    pid_file = HOOKS_DIR / "modal_watcher.pid"
+    script = HOOKS_DIR / "modal_watcher.py"
+    if not script.exists():
+        return
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            if is_pid_alive(pid):
+                return
+        except Exception:
+            pass
+    try:
+        py = WIN_PYTHON if sys.platform == "win32" else PYTHON
+        _spawn_detached([py, str(script)])
+        log("spawned modal_watcher")
+    except Exception as e:
+        log(f"modal_watcher spawn failed: {e}")
 
 
 def ensure_worker_running():
@@ -355,6 +397,9 @@ def main():
     # Spawning the worker is enough — the worker now does its own bot
     # heartbeat on a 3-minute timer. We don't block the hook on a bot check.
     ensure_worker_running()
+    # Also wake the modal watcher (background daemon, polls Modal every 5 min,
+    # downloads new results + regenerates plots + alerts on completion).
+    ensure_modal_watcher_running()
 
 
 if __name__ == "__main__":
