@@ -18,9 +18,9 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "/c/Python314/pythonw /c/Users/apart/.claude/hooks/telegram_mirror.py 2>>/c/Users/apart/.claude/hooks/telegram_mirror.log || true",
-            "timeout": 30
+            "type": "http",
+            "url": "http://127.0.0.1:53117/stop",
+            "timeout": 5
           }
         ]
       }
@@ -29,14 +29,14 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "/c/Python314/pythonw /c/Users/apart/.claude/hooks/telegram_mirror.py UserPromptSubmit 2>>/c/Users/apart/.claude/hooks/telegram_mirror.log || true",
-            "timeout": 30
+            "type": "http",
+            "url": "http://127.0.0.1:53117/user",
+            "timeout": 5
           },
           {
-            "type": "command",
-            "command": "/c/Python314/pythonw /c/Users/apart/.claude/hooks/telegram_inbox_drain.py 2>>/c/Users/apart/.claude/hooks/telegram_inbox_drain.log",
-            "timeout": 10
+            "type": "http",
+            "url": "http://127.0.0.1:53117/drain",
+            "timeout": 5
           }
         ]
       }
@@ -45,9 +45,9 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "/c/Python314/pythonw /c/Users/apart/.claude/hooks/telegram_inbox_drain.py 2>>/c/Users/apart/.claude/hooks/telegram_inbox_drain.log",
-            "timeout": 10
+            "type": "http",
+            "url": "http://127.0.0.1:53117/drain",
+            "timeout": 5
           }
         ]
       }
@@ -56,9 +56,9 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "/c/Python314/pythonw /c/Users/apart/.claude/hooks/telegram_stream.py 2>>/c/Users/apart/.claude/hooks/telegram_stream.log || true",
-            "timeout": 10
+            "type": "http",
+            "url": "http://127.0.0.1:53117/stream",
+            "timeout": 5
           }
         ]
       }
