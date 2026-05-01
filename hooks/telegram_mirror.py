@@ -210,6 +210,74 @@ def ensure_worker_running():
         log(f"worker spawn failed: {e}")
 
 
+def ensure_bot_running():
+    """Heartbeat: if the Telegram bot is dead, respawn it detached so it can
+    keep polling Telegram and writing to the inbox. Note: a detached bot
+    can't push MCP notifications to a live session — but its inbox writes
+    are picked up on the next SessionStart, so no messages are lost.
+    """
+    bot_pid_file = Path.home() / ".claude" / "channels" / "telegram" / "bot.pid"
+    plugin_dir = Path.home() / ".claude" / "plugins" / "cache" / "claude-plugins-official" / "telegram"
+    env_file = Path.home() / ".claude" / "channels" / "telegram" / ".env"
+
+    if bot_pid_file.exists():
+        try:
+            pid = int(bot_pid_file.read_text().strip())
+            if is_pid_alive(pid):
+                return  # bot alive, all good
+        except Exception:
+            pass
+
+    # Bot is dead. Find the plugin dir (hashed subdirectory).
+    if not plugin_dir.exists():
+        log("bot heartbeat: plugin dir missing, can't revive")
+        return
+    candidates = [d for d in plugin_dir.iterdir() if d.is_dir()]
+    if not candidates:
+        log("bot heartbeat: no plugin install found")
+        return
+    plugin_root = str(candidates[0])
+
+    # Pull token from .env so we don't have to assume it's in the environment.
+    token = None
+    if env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            if line.startswith("TELEGRAM_BOT_TOKEN="):
+                token = line.split("=", 1)[1].strip()
+                break
+    if not token:
+        log("bot heartbeat: no token in .env, can't revive")
+        return
+
+    try:
+        env = {**os.environ, "TELEGRAM_BOT_TOKEN": token}
+        if sys.platform == "win32":
+            DETACHED = 0x00000008
+            CREATE_NO_WINDOW = 0x08000000
+            subprocess.Popen(
+                ["bun", "--cwd", plugin_root, "server.ts"],
+                creationflags=DETACHED | CREATE_NO_WINDOW,
+                close_fds=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+            )
+        else:
+            subprocess.Popen(
+                ["bun", "--cwd", plugin_root, "server.ts"],
+                start_new_session=True,
+                close_fds=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env,
+            )
+        log("bot heartbeat: respawned detached bot")
+    except Exception as e:
+        log(f"bot heartbeat: respawn failed: {e}")
+
+
 def enqueue(text, parse_mode="HTML"):
     """Persist one message to the queue dir as a JSON file."""
     QUEUE_DIR.mkdir(parents=True, exist_ok=True)
@@ -285,6 +353,8 @@ def main():
 
     log(f"event={event} chars={len(text)} chunks={n} enqueued={len(enqueued)}")
     ensure_worker_running()
+    # Heartbeat: revive bot if it died. Cheap (~1 syscall when alive).
+    ensure_bot_running()
 
 
 if __name__ == "__main__":
