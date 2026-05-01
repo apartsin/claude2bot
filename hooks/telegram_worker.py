@@ -22,6 +22,7 @@ Robustness:
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.request
@@ -33,9 +34,12 @@ QUEUE_DIR = Path.home() / ".claude" / "hooks" / "telegram_queue"
 PID_FILE = Path.home() / ".claude" / "hooks" / "telegram_worker.pid"
 LOG_FILE = Path.home() / ".claude" / "hooks" / "telegram_worker.log"
 ENV_FILE = Path.home() / ".claude" / "channels" / "telegram" / ".env"
+BOT_PID_FILE = Path.home() / ".claude" / "channels" / "telegram" / "bot.pid"
+PLUGIN_DIR = Path.home() / ".claude" / "plugins" / "cache" / "claude-plugins-official" / "telegram"
 CHAT_ID = "1796415913"
 IDLE_EXIT_SEC = 120          # exit after 2 minutes of empty queue
 POLL_INTERVAL_SEC = 1         # check queue every second
+HEARTBEAT_INTERVAL_SEC = 180  # bot health check every 3 minutes
 RETRY_BACKOFFS = [1, 2, 5, 15, 30, 60]  # seconds between retries per message
 
 
@@ -230,6 +234,52 @@ def deliver_one(token, msg_path):
     time.sleep(backoff)
 
 
+def heartbeat_check_bot(token):
+    """Check if Telegram bot is alive; if not, respawn detached.
+    Detached bot can't push MCP notifications to a live Claude session, but
+    its inbox-file writes survive for the SessionStart drain on next session,
+    so no Telegram messages are lost.
+    """
+    if BOT_PID_FILE.exists():
+        try:
+            pid = int(BOT_PID_FILE.read_text().strip())
+            if is_pid_alive(pid):
+                return  # bot alive
+        except Exception:
+            pass
+    # Bot dead — find plugin dir and respawn
+    if not PLUGIN_DIR.exists():
+        log("heartbeat: plugin dir missing")
+        return
+    candidates = [d for d in PLUGIN_DIR.iterdir() if d.is_dir()]
+    if not candidates:
+        log("heartbeat: no plugin install")
+        return
+    plugin_root = str(candidates[0])
+    try:
+        env = {**os.environ, "TELEGRAM_BOT_TOKEN": token}
+        if sys.platform == "win32":
+            DETACHED = 0x00000008
+            CREATE_NO_WINDOW = 0x08000000
+            subprocess.Popen(
+                ["bun", "--cwd", plugin_root, "server.ts"],
+                creationflags=DETACHED | CREATE_NO_WINDOW,
+                close_fds=True,
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                env=env,
+            )
+        else:
+            subprocess.Popen(
+                ["bun", "--cwd", plugin_root, "server.ts"],
+                start_new_session=True, close_fds=True,
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                env=env,
+            )
+        log("heartbeat: respawned detached bot")
+    except Exception as e:
+        log(f"heartbeat: respawn failed: {e}")
+
+
 def main():
     if not acquire_singleton():
         # Another worker is alive; nothing to do.
@@ -243,7 +293,14 @@ def main():
         QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 
         idle_since = time.time()
+        last_heartbeat = 0.0
         while True:
+            # Bot heartbeat (every 3 min). Cheap: usually just a kill(pid, 0).
+            now = time.time()
+            if now - last_heartbeat > HEARTBEAT_INTERVAL_SEC:
+                heartbeat_check_bot(token)
+                last_heartbeat = now
+
             files = sorted(QUEUE_DIR.glob("*.json"))
             # Filter out files already being processed by another worker
             files = [f for f in files if not f.name.endswith(".processing")]

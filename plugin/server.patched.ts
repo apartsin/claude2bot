@@ -694,7 +694,18 @@ if (process.platform === 'win32') {
 // the gate's behavior for unrecognized groups.
 
 bot.command('start', async ctx => {
-  if (!dmCommandGate(ctx)) return
+  const gated = dmCommandGate(ctx)
+  if (!gated) return
+  // Already paired? Show status instead of dumping pairing instructions —
+  // useful when user clears chat history and types /start out of habit.
+  if (gated.access.allowFrom.includes(gated.senderId)) {
+    const name = ctx.from!.username ? `@${ctx.from!.username}` : gated.senderId
+    await ctx.reply(
+      `Already paired as ${name} — DMs here reach the Claude session.\n` +
+      `Send any message to continue. Use /status to check state.`
+    )
+    return
+  }
   await ctx.reply(
     `This bot bridges Telegram to a Claude Code session.\n\n` +
     `To pair:\n` +

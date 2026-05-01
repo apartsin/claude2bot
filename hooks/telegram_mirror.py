@@ -352,9 +352,9 @@ def main():
             log(f"enqueue failed chunk {i}/{n}: {e}")
 
     log(f"event={event} chars={len(text)} chunks={n} enqueued={len(enqueued)}")
+    # Spawning the worker is enough — the worker now does its own bot
+    # heartbeat on a 3-minute timer. We don't block the hook on a bot check.
     ensure_worker_running()
-    # Heartbeat: revive bot if it died. Cheap (~1 syscall when alive).
-    ensure_bot_running()
 
 
 if __name__ == "__main__":
