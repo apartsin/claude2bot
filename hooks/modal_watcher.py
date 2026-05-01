@@ -52,27 +52,65 @@ def is_pid_alive(pid: int) -> bool:
         return False
 
 
+_SINGLETON_HANDLE = None  # held for process lifetime once acquired
+
+
 def acquire_singleton() -> bool:
+    """OS-level singleton. On Windows uses a named mutex (atomic, race-free).
+    On POSIX falls back to the previous PID-file approach (good enough; no
+    duplicate-spawn races observed there).
+    """
+    global _SINGLETON_HANDLE
     HOOKS_DIR.mkdir(parents=True, exist_ok=True)
-    while True:
+
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = ctypes.windll.kernel32
+        ERROR_ALREADY_EXISTS = 183
+        # Backslash-prefixed namespace would require admin; use Local\.
+        # Per-user namespace prevents collision with other users' instances.
+        name = f"Local\\claude-modal-watcher-{os.getlogin()}"
+        kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+        kernel32.CreateMutexW.restype = wintypes.HANDLE
+        h = kernel32.CreateMutexW(None, True, name)
+        if not h:
+            return False
+        if kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            kernel32.CloseHandle(h)
+            return False
+        _SINGLETON_HANDLE = h  # hold for process lifetime
+        # Best-effort PID file for diagnostics; don't gate on it
         try:
-            fd = os.open(str(PID_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            try:
-                os.write(fd, str(os.getpid()).encode())
-            finally:
-                os.close(fd)
-            return True
-        except FileExistsError:
-            try:
-                other = int(PID_FILE.read_text().strip())
-            except Exception:
-                other = -1
+            PID_FILE.write_text(str(os.getpid()))
+        except Exception:
+            pass
+        return True
+
+    # POSIX path (original logic, no race observed)
+    try:
+        fd = os.open(str(PID_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        try:
+            os.write(fd, str(os.getpid()).encode())
+        finally:
+            os.close(fd)
+        return True
+    except FileExistsError:
+        try:
+            other = int(PID_FILE.read_text().strip())
             if is_pid_alive(other) and other != os.getpid():
                 return False
-            try:
-                PID_FILE.unlink()
-            except FileNotFoundError:
-                pass
+        except Exception:
+            pass
+        # Stale; one-shot retry
+        try:
+            PID_FILE.unlink()
+            fd = os.open(str(PID_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return True
+        except Exception:
+            return False
 
 
 def release_singleton() -> None:
