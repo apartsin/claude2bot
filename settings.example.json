@@ -1,12 +1,25 @@
 {
-  "_comment": "Drop these `hooks` blocks into your ~/.claude/settings.json. Adjust the python path if /c/Python314/python is not your interpreter.",
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "enabledPlugins": {
+    "code-review@claude-plugins-official": false,
+    "code-simplifier@claude-plugins-official": false,
+    "github@claude-plugins-official": true,
+    "coderabbit@claude-plugins-official": false,
+    "playground@claude-plugins-official": false,
+    "telegram@claude-plugins-official": true
+  },
+  "disabledMcpjsonServers": [
+    "Claude Preview"
+  ],
   "hooks": {
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "/c/Python314/python /c/Users/<YOU>/.claude/hooks/telegram_mirror.py 2>>/c/Users/<YOU>/.claude/hooks/telegram_mirror.log || true",
+            "command": "/c/Python314/pythonw /c/Users/apart/.claude/hooks/telegram_mirror.py 2>>/c/Users/apart/.claude/hooks/telegram_mirror.log || true",
             "timeout": 30
           }
         ]
@@ -17,8 +30,35 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/c/Python314/python /c/Users/<YOU>/.claude/hooks/telegram_mirror.py UserPromptSubmit 2>>/c/Users/<YOU>/.claude/hooks/telegram_mirror.log || true",
+            "command": "/c/Python314/pythonw /c/Users/apart/.claude/hooks/telegram_mirror.py UserPromptSubmit 2>>/c/Users/apart/.claude/hooks/telegram_mirror.log || true",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "/c/Python314/pythonw /c/Users/apart/.claude/hooks/telegram_inbox_drain.py 2>>/c/Users/apart/.claude/hooks/telegram_inbox_drain.log",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/c/Python314/pythonw /c/Users/apart/.claude/hooks/telegram_inbox_drain.py 2>>/c/Users/apart/.claude/hooks/telegram_inbox_drain.log",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/c/Python314/pythonw /c/Users/apart/.claude/hooks/telegram_stream.py 2>>/c/Users/apart/.claude/hooks/telegram_stream.log || true",
+            "timeout": 10
           }
         ]
       }

@@ -90,23 +90,11 @@ def render_block(block: dict) -> str | None:
             return None
         return html_escape(text[:MAX_BLOCK_CHARS])
     if btype == "tool_use":
-        name = block.get("name", "tool")
-        inp = block.get("input") or {}
-        # Compact one-line description of important fields
-        preview = ""
-        if isinstance(inp, dict):
-            for key in ("file_path", "command", "pattern", "url", "prompt", "description"):
-                if key in inp and isinstance(inp[key], str):
-                    preview = inp[key][:120]
-                    break
-            if not preview:
-                preview = json.dumps(inp)[:120]
-        return f"🔧 <code>{html_escape(name)}</code> {html_escape(preview)}"
+        # User chose not to mirror tool calls — too noisy.
+        return None
     if btype == "thinking":
-        text = block.get("thinking", "")
-        if not text.strip():
-            return None
-        return f"💭 <i>{html_escape(text[:MAX_BLOCK_CHARS])}</i>"
+        # User chose: only mirror plain text. Skip thinking blocks too.
+        return None
     if btype == "tool_result":
         # Skip — these are user-side blocks
         return None
