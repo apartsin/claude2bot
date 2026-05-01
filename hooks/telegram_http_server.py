@@ -107,6 +107,51 @@ def _enqueue(text: str, parse_mode: str = "HTML") -> None:
     fname = f"{time.time():.6f}-http.json"
     payload = {"text": text[:4000], "parse_mode": parse_mode, "enqueued_at": time.time()}
     (QUEUE_DIR / fname).write_text(json.dumps(payload), encoding="utf-8")
+    _ensure_worker_running()
+
+
+_WORKER_PID_FILE = HOOKS_DIR / "telegram_worker.pid"
+
+
+def _ensure_worker_running() -> None:
+    """Spawn the worker daemon if not alive. The worker exits after 2 min idle
+    (which is why we re-spawn it whenever something gets enqueued). Cheap:
+    one is_pid_alive syscall when worker is alive, full spawn when not."""
+    try:
+        if _WORKER_PID_FILE.exists():
+            try:
+                pid = int(_WORKER_PID_FILE.read_text().strip())
+                if pid > 0:
+                    try:
+                        os.kill(pid, 0)
+                        return  # alive
+                    except OSError:
+                        pass
+            except Exception:
+                pass
+        import subprocess
+        worker_py = HOOKS_DIR / "telegram_worker.py"
+        win_python = r"C:\Python314\pythonw.exe" if sys.platform == "win32" else "/c/Python314/python"
+        if sys.platform == "win32":
+            DETACHED = 0x00000008
+            CREATE_NO_WINDOW = 0x08000000
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0  # SW_HIDE
+            subprocess.Popen(
+                [win_python, str(worker_py)],
+                creationflags=DETACHED | CREATE_NO_WINDOW,
+                startupinfo=si, close_fds=True,
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        else:
+            subprocess.Popen(
+                [win_python, str(worker_py)],
+                start_new_session=True, close_fds=True,
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+    except Exception as e:
+        log(f"worker spawn failed: {e}")
 
 
 def _label(payload: dict) -> str:
